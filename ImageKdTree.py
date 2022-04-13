@@ -3,7 +3,7 @@ from PIL import Image, ImageDraw
 PADDING = 0
 OUTPUT_SCALE = 1
 ERROR_THRESHOLD = 7
-
+DEPTH=17
 
 def weighted_average(hist):
     """Returns the weighted color average and error from a hisogram of pixles"""
@@ -25,15 +25,16 @@ def color_from_histogram(hist):
     return (int(r), int(g), int(b)), e
 
 
-class QuadtreeNode(object):
-    """Node for Quadtree that holds a subsection of an image and 
+class KdtreeNode(object):
+    """Node for Kdtree that holds a subsection of an image and 
         information about that section"""
 
-    def __init__(self, img, box, depth):
+    def __init__(self, img, box, depth, cut=True):
         self.box = box  # (left, top, right, bottom)
         self.depth = depth
         self.children = None  # tl, tr, bl, br
         self.leaf = False
+        self.cut=cut # true = x-cut, false=y-cut
 
         # Gets the nodes average color
         image = img.crop(box)
@@ -46,24 +47,28 @@ class QuadtreeNode(object):
         return self.leaf
 
     def split(self, img):
-        """Splits the given image section into four equal image boxes"""
+        """Splits the given image section into 2 boxes depending on cut axis"""
         l, t, r, b = self.box
         lr = l + (r - l) / 2
         tb = t + (b - t) / 2
-        tl = QuadtreeNode(img, (l, t, lr, tb), self.depth+1)
-        tr = QuadtreeNode(img, (lr, t, r, tb), self.depth+1)
-        bl = QuadtreeNode(img, (l, tb, lr, b), self.depth+1)
-        br = QuadtreeNode(img, (lr, tb, r, b), self.depth+1)
-        self.children = [tl, tr, bl, br]
+
+        if (self.cut):
+            lc=KdtreeNode(img, (l,t,lr,b), self.depth+1, False)
+            rc=KdtreeNode(img, (lr,t,r,b), self.depth+1, False)
+            self.children=[lc,rc]
+        else:
+            tc=KdtreeNode(img, (l,t,r,tb), self.depth+1, True)
+            bc=KdtreeNode(img, (l,tb,r,b), self.depth+1, True)
+            self.children=[tc,bc]
 
 
-class Quadtree(object):
+class Kdtree(object):
     """Tree that has nodes with at most four child nodes that hold 
         sections of an image where there at most n leaf nodes where
         n is the number of pixles in the image"""
 
     def __init__(self, image, max_depth=1024):
-        self.root = QuadtreeNode(image, image.getbbox(), 0)
+        self.root = KdtreeNode(image, image.getbbox(), 0)
         self.width, self.height = image.size
         self.max_depth = 0
 
@@ -111,6 +116,7 @@ class Quadtree(object):
         leaf_nodes = self.get_leaf_nodes(depth)
         for node in leaf_nodes:
             l, t, r, b = node.box
+            #print( l, t, r, b, node.color[1], node.color[2], node.color[0])
             box = (l * m + dx, t * m + dy, r * m - 1, b * m - 1)
             draw.rectangle(box, node.color)
         return image
@@ -142,8 +148,8 @@ class Quadtree(object):
 
 image = Image.open("./Images/flowers.jpg").convert('RGB')
 print("Opened Image")
-tree=Quadtree(image, 12)
-print("made quadtree")
+tree=Kdtree(image, DEPTH)
+print("made KDtree")
 print(tree.max_depth)
 
 tree.render_at_depth(tree.max_depth)
